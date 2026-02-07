@@ -11,6 +11,9 @@
       <div class="brand">PswManager</div>
       {% if user %}
       <div class="user-info">
+        {% if user.is_admin %}
+        <a class="button ghost" href="/admin">Admin</a>
+        {% endif %}
         <div class="user-name">{{ user.username }}</div>
         <form method="post" action="/logout">
           <button class="button ghost" type="submit">Logout</button>

@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 import auth
 import crypto
@@ -102,6 +103,16 @@ def _current_user(request: Request, db: Session) -> tuple[User, bytes] | None:
     return user, session["key"]
 
 
+def _require_admin(request: Request, db: Session) -> tuple[User, bytes] | None:
+    user_session = _current_user(request, db)
+    if not user_session:
+        return None
+    user, key = user_session
+    if not user.is_admin:
+        return None
+    return user, key
+
+
 @app.on_event("startup")
 def startup() -> None:
     app.state.sessions = {}
@@ -174,11 +185,24 @@ def login(
             "login.html",
             {"request": request, "error": "Credenziali non valide."},
         )
-    if not user.totp_verified:
+    if not user.is_active:
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "2FA non configurato. Completa la configurazione."},
+            {"request": request, "error": "Account disattivato. Contatta l'amministratore."},
         )
+    if not user.totp_verified:
+        key = crypto.derive_key(password, user.salt)
+        setup_token = _create_setup_token(user.id, key)
+        response = RedirectResponse("/setup-2fa", status_code=302)
+        response.set_cookie(
+            "setup_token",
+            setup_token,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="strict",
+            max_age=15 * 60,
+        )
+        return response
 
     key = crypto.derive_key(password, user.salt)
     try:
@@ -242,12 +266,15 @@ def register(
     secret = auth.generate_totp_secret()
     secret_enc = crypto.encrypt(key, secret)
 
+    is_first_user = db.query(User).count() == 0
     user = User(
         username=username,
         password_hash=auth.hash_password(password),
         salt=salt,
         totp_secret_enc=secret_enc,
         totp_verified=False,
+        is_admin=is_first_user,
+        is_active=True,
     )
     db.add(user)
     db.commit()
@@ -275,7 +302,13 @@ def setup_2fa_form(request: Request, db: Session = Depends(get_db)) -> HTMLRespo
     if not user:
         return RedirectResponse("/login", status_code=302)
 
-    secret = crypto.decrypt(entry["key"], user.totp_secret_enc)
+    if not user.totp_secret_enc:
+        secret = auth.generate_totp_secret()
+        user.totp_secret_enc = crypto.encrypt(entry["key"], secret)
+        db.add(user)
+        db.commit()
+    else:
+        secret = crypto.decrypt(entry["key"], user.totp_secret_enc)
     uri = auth.totp_uri(secret, user.username)
     qr = auth.qr_base64(uri)
     return templates.TemplateResponse(
@@ -442,6 +475,81 @@ def item_delete(request: Request, item_id: int, db: Session = Depends(get_db)) -
         db.delete(item)
         db.commit()
     return RedirectResponse("/", status_code=302)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    admin_session = _require_admin(request, db)
+    if not admin_session:
+        return RedirectResponse("/login", status_code=302)
+    admin_user, _ = admin_session
+
+    users = db.query(User).order_by(User.id.asc()).all()
+    counts = {row[0]: row[1] for row in db.query(VaultItem.user_id, func.count(VaultItem.id)).group_by(VaultItem.user_id).all()}
+
+    view_users = []
+    for user in users:
+        view_users.append(
+            {
+                "id": user.id,
+                "username": user.username,
+                "created_at": user.created_at,
+                "totp_verified": user.totp_verified,
+                "is_admin": user.is_admin,
+                "is_active": user.is_active,
+                "items_count": counts.get(user.id, 0),
+            }
+        )
+
+    return templates.TemplateResponse(
+        "admin.html",
+        {"request": request, "user": admin_user, "users": view_users},
+    )
+
+
+@app.post("/admin/user/{user_id}/toggle-active")
+def admin_toggle_active(request: Request, user_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    admin_session = _require_admin(request, db)
+    if not admin_session:
+        return RedirectResponse("/login", status_code=302)
+    admin_user, _ = admin_session
+    if admin_user.id == user_id:
+        return RedirectResponse("/admin", status_code=302)
+    user = db.get(User, user_id)
+    if user:
+        user.is_active = not user.is_active
+        db.add(user)
+        db.commit()
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/user/{user_id}/reset-2fa")
+def admin_reset_2fa(request: Request, user_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    admin_session = _require_admin(request, db)
+    if not admin_session:
+        return RedirectResponse("/login", status_code=302)
+    user = db.get(User, user_id)
+    if user:
+        user.totp_verified = False
+        user.totp_secret_enc = ""
+        db.add(user)
+        db.commit()
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/user/{user_id}/delete")
+def admin_delete_user(request: Request, user_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    admin_session = _require_admin(request, db)
+    if not admin_session:
+        return RedirectResponse("/login", status_code=302)
+    admin_user, _ = admin_session
+    if admin_user.id == user_id:
+        return RedirectResponse("/admin", status_code=302)
+    user = db.get(User, user_id)
+    if user:
+        db.delete(user)
+        db.commit()
+    return RedirectResponse("/admin", status_code=302)
 
 
 @app.get("/api/generate-password")

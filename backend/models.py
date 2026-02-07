@@ -17,6 +17,8 @@ class User(Base):
     salt: Mapped[str] = mapped_column(String(64))
     totp_secret_enc: Mapped[str] = mapped_column(Text)
     totp_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     items = relationship("VaultItem", back_populates="user", cascade="all, delete-orphan")

@@ -243,6 +243,59 @@ textarea {
   color: var(--muted);
 }
 
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.table th,
+.table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(30, 26, 20, 0.08);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table thead th {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(30, 26, 20, 0.08);
+  font-size: 0.8rem;
+}
+
+.badge.success {
+  background: rgba(46, 134, 87, 0.15);
+  color: #2e8657;
+}
+
+.badge.warning {
+  background: rgba(194, 134, 10, 0.18);
+  color: #9a6405;
+}
+
+.badge.danger {
+  background: rgba(160, 48, 48, 0.15);
+  color: var(--danger);
+}
+
+.badge.info {
+  background: rgba(30, 90, 122, 0.18);
+  color: var(--accent);
+}
+
 @media (max-width: 720px) {
   .topbar,
   .container {
