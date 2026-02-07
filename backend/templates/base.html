@@ -11,6 +11,9 @@
       <div class="brand">PswManager</div>
       {% if user %}
       <div class="user-info">
+        {% if not user.totp_verified %}
+        <a class="button ghost" href="/setup-2fa">Configura 2FA</a>
+        {% endif %}
         {% if user.is_admin %}
         <a class="button ghost" href="/admin">Admin</a>
         {% endif %}

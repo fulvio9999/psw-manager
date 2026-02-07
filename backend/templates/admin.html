@@ -9,6 +9,20 @@
 </section>
 
 <section class="panel">
+  <div class="settings-row">
+    <div>
+      <div class="item-title">Obbligo 2FA</div>
+      <div class="muted">Se attivo, i nuovi utenti devono configurare il 2FA per accedere.</div>
+    </div>
+    <form method="post" action="/admin/settings/require-2fa">
+      <button class="button ghost" type="submit">
+        {% if settings.require_2fa %}Disattiva obbligo{% else %}Attiva obbligo{% endif %}
+      </button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
   <table class="table">
     <thead>
       <tr>

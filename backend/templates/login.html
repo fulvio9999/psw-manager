@@ -13,7 +13,12 @@
     </label>
     <label>
       Codice 2FA
+      {% if require_2fa %}
       <input type="text" name="code" required />
+      {% else %}
+      <input type="text" name="code" />
+      <span class="muted">Se hai attivato il 2FA inserisci il codice.</span>
+      {% endif %}
     </label>
     <button class="button primary" type="submit">Entra</button>
   </form>

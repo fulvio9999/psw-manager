@@ -249,6 +249,13 @@ textarea {
   font-size: 0.95rem;
 }
 
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
 .table th,
 .table td {
   padding: 10px 8px;

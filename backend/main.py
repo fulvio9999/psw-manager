@@ -16,7 +16,7 @@ from sqlalchemy import func
 import auth
 import crypto
 from database import SessionLocal, init_db
-from models import User, VaultItem
+from models import AppSettings, User, VaultItem
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -113,11 +113,23 @@ def _require_admin(request: Request, db: Session) -> tuple[User, bytes] | None:
     return user, key
 
 
+def _get_settings(db: Session) -> AppSettings:
+    settings = db.query(AppSettings).first()
+    if not settings:
+        settings = AppSettings(require_2fa=True)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
 @app.on_event("startup")
 def startup() -> None:
     app.state.sessions = {}
     app.state.setup_tokens = {}
     init_db()
+    with SessionLocal() as db:
+        _get_settings(db)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -162,8 +174,12 @@ def home(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 
 
 @app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("login.html", {"request": request})
+def login_form(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    settings = _get_settings(db)
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "require_2fa": settings.require_2fa},
+    )
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -174,50 +190,60 @@ def login(
     code: str = Form(...),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    settings = _get_settings(db)
     if len(password.encode("utf-8")) > 72:
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Password troppo lunga (max 72 caratteri/byte)."},
+            {"request": request, "error": "Password troppo lunga (max 72 caratteri/byte).", "require_2fa": settings.require_2fa},
         )
     user = db.query(User).filter(User.username == username).first()
     if not user or not auth.verify_password(password, user.password_hash):
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Credenziali non valide."},
+            {"request": request, "error": "Credenziali non valide.", "require_2fa": settings.require_2fa},
         )
     if not user.is_active:
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Account disattivato. Contatta l'amministratore."},
+            {
+                "request": request,
+                "error": "Account disattivato. Contatta l'amministratore.",
+                "require_2fa": settings.require_2fa,
+            },
         )
-    if not user.totp_verified:
-        key = crypto.derive_key(password, user.salt)
-        setup_token = _create_setup_token(user.id, key)
-        response = RedirectResponse("/setup-2fa", status_code=302)
-        response.set_cookie(
-            "setup_token",
-            setup_token,
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="strict",
-            max_age=15 * 60,
-        )
-        return response
-
     key = crypto.derive_key(password, user.salt)
-    try:
-        secret = crypto.decrypt(key, user.totp_secret_enc)
-    except Exception:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Errore crittografico. Riprovare."},
-        )
 
-    if not auth.verify_totp(secret, code):
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Codice 2FA non valido."},
-        )
+    if user.totp_verified:
+        if not code:
+            return templates.TemplateResponse(
+                "login.html",
+                {"request": request, "error": "Inserisci il codice 2FA.", "require_2fa": settings.require_2fa},
+            )
+        try:
+            secret = crypto.decrypt(key, user.totp_secret_enc)
+        except Exception:
+            return templates.TemplateResponse(
+                "login.html",
+                {"request": request, "error": "Errore crittografico. Riprovare.", "require_2fa": settings.require_2fa},
+            )
+        if not auth.verify_totp(secret, code):
+            return templates.TemplateResponse(
+                "login.html",
+                {"request": request, "error": "Codice 2FA non valido.", "require_2fa": settings.require_2fa},
+            )
+    else:
+        if settings.require_2fa:
+            setup_token = _create_setup_token(user.id, key)
+            response = RedirectResponse("/setup-2fa", status_code=302)
+            response.set_cookie(
+                "setup_token",
+                setup_token,
+                httponly=True,
+                secure=COOKIE_SECURE,
+                samesite="strict",
+                max_age=15 * 60,
+            )
+            return response
 
     session_id = _create_session(user.id, key)
     response = RedirectResponse("/", status_code=302)
@@ -261,6 +287,7 @@ def register(
             {"request": request, "error": "Username già in uso."},
         )
 
+    settings = _get_settings(db)
     salt = crypto.generate_salt()
     key = crypto.derive_key(password, salt)
     secret = auth.generate_totp_secret()
@@ -280,15 +307,28 @@ def register(
     db.commit()
     db.refresh(user)
 
-    setup_token = _create_setup_token(user.id, key)
-    response = RedirectResponse("/setup-2fa", status_code=302)
+    if settings.require_2fa:
+        setup_token = _create_setup_token(user.id, key)
+        response = RedirectResponse("/setup-2fa", status_code=302)
+        response.set_cookie(
+            "setup_token",
+            setup_token,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="strict",
+            max_age=15 * 60,
+        )
+        return response
+
+    session_id = _create_session(user.id, key)
+    response = RedirectResponse("/", status_code=302)
     response.set_cookie(
-        "setup_token",
-        setup_token,
+        "session_id",
+        session_id,
         httponly=True,
         secure=COOKIE_SECURE,
         samesite="strict",
-        max_age=15 * 60,
+        max_age=SESSION_TTL_MIN * 60,
     )
     return response
 
@@ -296,8 +336,14 @@ def register(
 @app.get("/setup-2fa", response_class=HTMLResponse)
 def setup_2fa_form(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     entry = _get_setup_token(request)
+    setup_token = None
     if not entry:
-        return RedirectResponse("/login", status_code=302)
+        user_session = _current_user(request, db)
+        if not user_session:
+            return RedirectResponse("/login", status_code=302)
+        user, key = user_session
+        setup_token = _create_setup_token(user.id, key)
+        entry = app.state.setup_tokens[setup_token]
     user = db.get(User, entry["user_id"])
     if not user:
         return RedirectResponse("/login", status_code=302)
@@ -311,10 +357,20 @@ def setup_2fa_form(request: Request, db: Session = Depends(get_db)) -> HTMLRespo
         secret = crypto.decrypt(entry["key"], user.totp_secret_enc)
     uri = auth.totp_uri(secret, user.username)
     qr = auth.qr_base64(uri)
-    return templates.TemplateResponse(
+    template_response = templates.TemplateResponse(
         "setup_2fa.html",
         {"request": request, "qr": qr, "secret": secret, "username": user.username},
     )
+    if setup_token:
+        template_response.set_cookie(
+            "setup_token",
+            setup_token,
+            httponly=True,
+            secure=COOKIE_SECURE,
+            samesite="strict",
+            max_age=15 * 60,
+        )
+    return template_response
 
 
 @app.post("/setup-2fa", response_class=HTMLResponse)
@@ -501,9 +557,10 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResp
             }
         )
 
+    settings = _get_settings(db)
     return templates.TemplateResponse(
         "admin.html",
-        {"request": request, "user": admin_user, "users": view_users},
+        {"request": request, "user": admin_user, "users": view_users, "settings": settings},
     )
 
 
@@ -549,6 +606,18 @@ def admin_delete_user(request: Request, user_id: int, db: Session = Depends(get_
     if user:
         db.delete(user)
         db.commit()
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/settings/require-2fa")
+def admin_toggle_require_2fa(request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
+    admin_session = _require_admin(request, db)
+    if not admin_session:
+        return RedirectResponse("/login", status_code=302)
+    settings = _get_settings(db)
+    settings.require_2fa = not settings.require_2fa
+    db.add(settings)
+    db.commit()
     return RedirectResponse("/admin", status_code=302)
 
 
