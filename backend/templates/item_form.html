@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  {% if mode == "edit" %}
+  <h1>Modifica credenziale</h1>
+  <form method="post" action="/item/{{ item.id }}/edit" class="form">
+  {% else %}
+  <h1>Nuova credenziale</h1>
+  <form method="post" action="/item/new" class="form">
+  {% endif %}
+    <label>
+      Nome
+      <input type="text" name="name" value="{{ item.name if item }}" required />
+    </label>
+    <label>
+      Username
+      <input type="text" name="username" value="{{ item.username if item }}" required />
+    </label>
+    <label>
+      Password
+      <input type="text" id="password-input" name="password" value="{{ item.password if item }}" required />
+    </label>
+    <div class="inline-actions">
+      <button class="button ghost" type="button" data-generate data-target="password-input">Genera password</button>
+      <button class="button ghost" type="button" data-copy="password-input">Copia</button>
+    </div>
+    <label>
+      URL
+      <input type="text" name="url" value="{{ item.url if item }}" />
+    </label>
+    <label>
+      Note
+      <textarea name="notes" rows="4">{{ item.notes if item }}</textarea>
+    </label>
+    <div class="form-actions">
+      <a class="button ghost" href="/">Annulla</a>
+      <button class="button primary" type="submit">Salva</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

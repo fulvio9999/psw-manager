@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Registrazione</h1>
+  <form method="post" action="/register" class="form">
+    <label>
+      Username
+      <input type="text" name="username" required />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required />
+    </label>
+    <label>
+      Conferma password
+      <input type="password" name="password_confirm" required />
+    </label>
+    <button class="button primary" type="submit">Crea account</button>
+  </form>
+  <div class="muted">
+    Hai già un account? <a href="/login">Accedi</a>
+  </div>
+</section>
+{% endblock %}

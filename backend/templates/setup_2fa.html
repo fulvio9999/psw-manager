@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Configura 2FA</h1>
+  <p>Scansiona il QR con Google Authenticator o un'app compatibile TOTP.</p>
+  <div class="qr-wrap">
+    <img src="data:image/png;base64,{{ qr }}" alt="QR 2FA" />
+  </div>
+  <div class="muted">
+    Codice manuale: <strong>{{ secret }}</strong>
+  </div>
+  <form method="post" action="/setup-2fa" class="form">
+    <label>
+      Inserisci il codice TOTP
+      <input type="text" name="code" required />
+    </label>
+    <button class="button primary" type="submit">Conferma</button>
+  </form>
+</section>
+{% endblock %}

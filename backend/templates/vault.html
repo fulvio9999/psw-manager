@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="vault-header">
+  <div>
+    <h1>Le tue credenziali</h1>
+    <p class="muted">Cerca, modifica e genera password in un unico posto.</p>
+  </div>
+  <a class="button primary" href="/item/new">Nuova credenziale</a>
+</section>
+
+<section class="panel">
+  <form class="search" method="get" action="/">
+    <input type="text" name="q" placeholder="Cerca per sito, user o note..." value="{{ q }}" />
+    <button class="button ghost" type="submit">Cerca</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="generator">
+    <div class="generator-title">Generatore password</div>
+    <div class="generator-controls">
+      <label>
+        Lunghezza
+        <input type="number" id="gen-length" value="16" min="8" max="64" />
+      </label>
+      <label class="inline">
+        <input type="checkbox" id="gen-digits" checked />
+        Numeri
+      </label>
+      <label class="inline">
+        <input type="checkbox" id="gen-symbols" checked />
+        Simboli
+      </label>
+      <button class="button ghost" type="button" data-generate>Genera</button>
+    </div>
+    <div class="generator-output">
+      <input type="text" id="gen-output" readonly />
+      <button class="button ghost" type="button" data-copy="gen-output">Copia</button>
+    </div>
+  </div>
+</section>
+
+<section class="grid">
+  {% if items|length == 0 %}
+  <div class="panel empty">
+    Nessuna credenziale salvata. Inizia aggiungendone una.
+  </div>
+  {% endif %}
+
+  {% for item in items %}
+  <article class="card">
+    <div class="card-header">
+      <div>
+        <div class="item-title">{{ item.name }}</div>
+        <div class="item-sub">{{ item.username }}</div>
+      </div>
+      <div class="card-actions">
+        <a class="button ghost" href="/item/{{ item.id }}/edit">Modifica</a>
+        <form method="post" action="/item/{{ item.id }}/delete">
+          <button class="button danger" type="submit">Elimina</button>
+        </form>
+      </div>
+    </div>
+    <div class="field-row">
+      <input type="password" readonly id="pwd-{{ item.id }}" value="{{ item.password }}" />
+      <button class="button ghost" type="button" data-toggle="pwd-{{ item.id }}">Mostra</button>
+      <button class="button ghost" type="button" data-copy="pwd-{{ item.id }}">Copia</button>
+    </div>
+    {% if item.url %}
+    <div class="muted">
+      <a href="{{ item.url }}" target="_blank" rel="noreferrer">{{ item.url }}</a>
+    </div>
+    {% endif %}
+    {% if item.notes %}
+    <div class="notes">{{ item.notes }}</div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

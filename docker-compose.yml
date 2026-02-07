@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      - DATABASE_URL=sqlite:///./data/app.db
+      - COOKIE_SECURE=true
+      - SESSION_TTL_MIN=240
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
