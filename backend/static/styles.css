@@ -134,11 +134,25 @@ textarea {
   margin-bottom: 16px;
 }
 
+.alert.success {
+  background: rgba(46, 134, 87, 0.15);
+  color: #2e8657;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
 .vault-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 24px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .search {
@@ -216,6 +230,17 @@ textarea {
   padding: 10px;
   border-radius: 12px;
   font-size: 0.9rem;
+}
+
+.code-block {
+  background: rgba(30, 26, 20, 0.06);
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-family: "Source Serif 4", serif;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  margin: 10px 0 16px;
+  word-break: break-word;
 }
 
 .qr-wrap {

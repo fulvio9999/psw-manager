@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="vault-header">
+  <div>
+    <h1>Importa CSV</h1>
+    <p class="muted">Carica un file CSV con le credenziali da importare nel vault.</p>
+  </div>
+  <a class="button ghost" href="/">Torna al vault</a>
+</section>
+
+<section class="panel">
+  <h2>Schema richiesto</h2>
+  <p class="muted">Il file deve avere questi header (ordine libero):</p>
+  <div class="code-block">name,username,password,url,notes</div>
+  <p class="muted">Esempio:</p>
+  <div class="code-block">
+    name,username,password,url,notes<br />
+    Gmail,me@gmail.com,SuperS3greta!,https://mail.google.com,"2FA attivo"
+  </div>
+</section>
+
+<section class="panel">
+  {% if success %}
+  <div class="alert success">{{ success }}</div>
+  {% endif %}
+  {% if error %}
+  <div class="alert error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/import" enctype="multipart/form-data" class="form">
+    <label>
+      File CSV
+      <input type="file" name="file" accept=".csv" required />
+    </label>
+    <button class="button primary" type="submit">Importa</button>
+  </form>
+</section>
+{% endblock %}

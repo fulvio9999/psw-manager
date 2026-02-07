@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 import secrets
 import time
+import csv
+import io
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Form, Request
+from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -187,7 +189,7 @@ def login(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
-    code: str = Form(...),
+    code: str = Form(""),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     settings = _get_settings(db)
@@ -531,6 +533,90 @@ def item_delete(request: Request, item_id: int, db: Session = Depends(get_db)) -
         db.delete(item)
         db.commit()
     return RedirectResponse("/", status_code=302)
+
+
+@app.get("/import", response_class=HTMLResponse)
+def import_form(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    user_session = _require_user(request, db)
+    if not user_session:
+        return RedirectResponse("/login", status_code=302)
+    user, _ = user_session
+    return templates.TemplateResponse(
+        "import.html",
+        {"request": request, "user": user},
+    )
+
+
+@app.post("/import", response_class=HTMLResponse)
+async def import_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    user_session = _require_user(request, db)
+    if not user_session:
+        return RedirectResponse("/login", status_code=302)
+    user, key = user_session
+
+    if not file.filename.lower().endswith(".csv"):
+        return templates.TemplateResponse(
+            "import.html",
+            {"request": request, "user": user, "error": "Carica un file CSV valido."},
+        )
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    sample = text[:2048]
+    try:
+        dialect = csv.Sniffer().sniff(sample)
+    except csv.Error:
+        dialect = csv.excel
+
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+    required = {"name", "username", "password", "url", "notes"}
+    if not reader.fieldnames or not required.issubset({h.strip().lower() for h in reader.fieldnames}):
+        return templates.TemplateResponse(
+            "import.html",
+            {
+                "request": request,
+                "user": user,
+                "error": "Header CSV non valido. Usa: name,username,password,url,notes",
+            },
+        )
+
+    count = 0
+    for row in reader:
+        normalized = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+        name = normalized.get("name", "")
+        username = normalized.get("username", "")
+        password = normalized.get("password", "")
+        url = normalized.get("url", "")
+        notes = normalized.get("notes", "")
+
+        if not name or not username or not password:
+            continue
+
+        item = VaultItem(
+            user_id=user.id,
+            name=crypto.encrypt(key, name),
+            username=crypto.encrypt(key, username),
+            password=crypto.encrypt(key, password),
+            url=crypto.encrypt(key, url) if url else "",
+            notes=crypto.encrypt(key, notes) if notes else "",
+        )
+        db.add(item)
+        count += 1
+
+    db.commit()
+
+    return templates.TemplateResponse(
+        "import.html",
+        {"request": request, "user": user, "success": f"Importate {count} credenziali."},
+    )
 
 
 @app.get("/admin", response_class=HTMLResponse)
